@@ -448,4 +448,6 @@ def resume_analytics():
 
 if __name__ == '__main__':
     app.run(debug=True)
+# For Vercel
+handler = app
 
