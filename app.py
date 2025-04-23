@@ -13,14 +13,6 @@ from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = 'your_super_secret_key' 
-
-# Configure upload folder
-UPLOAD_FOLDER = 'uploads'
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['ALLOWED_EXTENSIONS'] = {'pdf', 'docx'}
-
 # Database setup
 DATABASE = 'resume_analyzer.db'
 
