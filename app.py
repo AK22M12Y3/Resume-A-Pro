@@ -408,6 +408,11 @@ def resume_analytics():
     ''').fetchall()
     return render_template('resume_analytics.html', resumes=resumes)
 
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204
+
+
 if __name__ == '__main__':
     app.run(debug=True)
 # For Vercel
