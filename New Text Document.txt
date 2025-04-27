@@ -1,0 +1,11 @@
+pip install Flask
+pip install docx2txt
+pip install PyMuPDF
+pip install nltk
+pip install Werkzeug
+pip install pysqlite3
+import nltk
+nltk.download('stopwords')
+pip install Flask-Session
+pip install Flask-SQLAlchemy
+pip install -r requirements.txt
