@@ -1,3 +1,4 @@
+
 from flask import Flask, render_template, request, redirect, url_for, session, abort, flash  # Added flash here
 import os
 import docx2txt
@@ -13,6 +14,7 @@ from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = 'your_super_secret_key' 
+
 # Database setup
 DATABASE = 'resume_analyzer.db'
 
@@ -63,13 +65,13 @@ nltk.download('punkt')
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
-def extract_text(file):
+def extract_text(filepath):
     try:
-        if file.filename.endswith('.pdf'):
-            with fitz.open(stream=file.read(), filetype="pdf") as doc:
+        if filepath.endswith('.pdf'):
+            with fitz.open(filepath) as doc:
                 return ''.join([page.get_text() for page in doc])
-        elif file.filename.endswith('.docx'):
-            return docx2txt.process(file)
+        elif filepath.endswith('.docx'):
+            return docx2txt.process(filepath)
         return ""
     except Exception as e:
         print(f"Error extracting text: {str(e)}")
@@ -234,7 +236,7 @@ def update_analytics(field):
 # ================== ROUTES ==================
 @app.route('/')
 def home():
-    return render_template('index.html')
+    return render_template('landing.html')
 
 @app.route('/ats-checker', methods=['GET', 'POST'])
 def ats_checker():
@@ -247,8 +249,13 @@ def ats_checker():
             return redirect(request.url)
         
         if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            
             try:
-                text = extract_text(file)
+                file.save(filepath)
+                text = extract_text(filepath)
+                
                 score = calculate_ats_score(text)
                 feedback = generate_feedback(score, text)
                 
@@ -257,16 +264,17 @@ def ats_checker():
                 db.execute('''
                     INSERT INTO resumes (filename, ats_score, upload_date, contact_info)
                     VALUES (?, ?, ?, ?)
-                ''', (file.filename, score, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 
+                ''', (filename, score, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 
                       extract_email(text) or extract_phone(text)))
                 db.commit()
                 
                 update_analytics('ats_checks')
+                os.remove(filepath)
                 
                 return render_template('ats_results.html', 
                                     score=round(score, 1),
                                     feedback=feedback,
-                                    filename=file.filename)
+                                    filename=filename)
             except Exception as e:
                 return f"Error processing file: {str(e)}", 500
         
@@ -289,9 +297,18 @@ def compatibility_test():
         if (resume_file and allowed_file(resume_file.filename) and 
             job_desc_file and allowed_file(job_desc_file.filename)):
             
+            resume_filename = secure_filename(resume_file.filename)
+            job_desc_filename = secure_filename(job_desc_file.filename)
+            
+            resume_path = os.path.join(app.config['UPLOAD_FOLDER'], resume_filename)
+            job_desc_path = os.path.join(app.config['UPLOAD_FOLDER'], job_desc_filename)
+            
             try:
-                resume_text = extract_text(resume_file)
-                job_desc_text = extract_text(job_desc_file)
+                resume_file.save(resume_path)
+                job_desc_file.save(job_desc_path)
+                
+                resume_text = extract_text(resume_path)
+                job_desc_text = extract_text(job_desc_path)
                 
                 score = calculate_match_score(resume_text, job_desc_text)
                 feedback = generate_match_feedback(score)
@@ -301,17 +318,19 @@ def compatibility_test():
                 db.execute('''
                     INSERT INTO job_matches (resume_filename, jd_filename, match_score, analysis_date)
                     VALUES (?, ?, ?, ?)
-                ''', (resume_file.filename, job_desc_file.filename, score, 
+                ''', (resume_filename, job_desc_filename, score, 
                       datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
                 db.commit()
                 
                 update_analytics('match_checks')
+                os.remove(resume_path)
+                os.remove(job_desc_path)
                 
                 return render_template('compatibility_results.html', 
                                     score=round(score, 1),
                                     feedback=feedback,
-                                    resume_filename=resume_file.filename,
-                                    job_desc_filename=job_desc_file.filename)
+                                    resume_filename=resume_filename,
+                                    job_desc_filename=job_desc_filename)
             except Exception as e:
                 return f"Error processing files: {str(e)}", 500
         
@@ -333,7 +352,14 @@ def resume_ranking():
         
         if file and allowed_file(file.filename):
             try:
-                text = extract_text(file)
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                
+                # Save file temporarily
+                file.save(filepath)
+                
+                # Process file
+                text = extract_text(filepath)
                 score = calculate_ats_score(text)
                 
                 # Store in database
@@ -341,17 +367,22 @@ def resume_ranking():
                 db.execute('''
                     INSERT INTO resumes (filename, ats_score, upload_date, contact_info)
                     VALUES (?, ?, ?, ?)
-                ''', (file.filename, score, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 
+                ''', (filename, score, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 
                       extract_email(text) or extract_phone(text)))
                 db.commit()
                 
                 update_analytics('resumes_uploaded')
                 
+                # Clean up
+                os.remove(filepath)
+                
                 return render_template('upload_success.html', 
                                     score=round(score, 1),
-                                    filename=file.filename)
+                                    filename=filename)
                 
             except Exception as e:
+                if os.path.exists(filepath):
+                    os.remove(filepath)
                 flash(f'Error processing file: {str(e)}', 'error')
                 return redirect(request.url)
         
@@ -408,13 +439,6 @@ def resume_analytics():
     ''').fetchall()
     return render_template('resume_analytics.html', resumes=resumes)
 
-@app.route('/favicon.ico')
-def favicon():
-    return '', 204
-
-
 if __name__ == '__main__':
-    app.run(debug=True)
-# For Vercel
-handler = app
+    app.run(host="0.0.0.0", debug=True)
 
