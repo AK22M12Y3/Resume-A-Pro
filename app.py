@@ -236,7 +236,7 @@ def update_analytics(field):
 # ================== ROUTES ==================
 @app.route('/')
 def home():
-    return render_template('landing.html')
+    return render_template('index.html')
 
 @app.route('/ats-checker', methods=['GET', 'POST'])
 def ats_checker():
@@ -441,4 +441,3 @@ def resume_analytics():
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", debug=True)
-
